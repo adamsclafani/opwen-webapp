@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from sqlalchemy import BLOB
 from sqlalchemy import Boolean
 from sqlalchemy import Column
 from sqlalchemy import DateTime
@@ -70,7 +71,8 @@ class _Attachment(_Base):
     id = Column(Integer, primary_key=True)
 
     filename = Column(Text)
-    content = Column(Text)
+    content = Column(BLOB)
+    cid = Column(Text)
 
 
 class _Email(_Base):
@@ -92,7 +94,8 @@ class _Email(_Base):
     def to_dict(self):
         attachments = self.attachments
         attachments = ([{'filename': attachment.filename,
-                         'content': attachment.content}
+                         'content': attachment.content,
+                         'cid': attachment.cid}
                         for attachment in attachments]
                        if attachments else None)
 

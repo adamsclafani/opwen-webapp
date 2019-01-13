@@ -2,11 +2,14 @@ from os import path
 from tempfile import gettempdir
 
 from babel import Locale
+from dotenv import load_dotenv
 from flask_babelex import gettext as _
 
 from opwen_email_client.util.os import getenv
 from opwen_email_client.util.os import subdirectories
 
+settings_path = getenv('OPWEN_SETTINGS')
+load_dotenv(settings_path)
 
 state_basedir = path.abspath(getenv('OPWEN_STATE_DIRECTORY', gettempdir()))
 app_basedir = path.abspath(path.dirname(__file__))
@@ -15,8 +18,8 @@ root_domain = getenv('OPWEN_ROOT_DOMAIN', 'lokole.ca')
 
 # noinspection PyPep8Naming
 class i8n(object):
-    SETTINGS_UPDATED = _('Settings updated!')
-    WVDIAL_REQUIRED = _('Dial-up information required.')
+    SETTINGS_UPDATED = _('Settings updated! If required, the app will '
+                         'restart soon to reflect the changes.')
     LOGIN_REQUIRED = _('Please log in to access this page.')
     UNAUTHORIZED = _('You do not have permission to view this page.')
     INVALID_PASSWORD = _('Invalid password.')
@@ -84,6 +87,8 @@ class AppConfig(object):
 
     WVDIAL_PATH = '/etc/wvdial.conf'
     LOCAL_EMAIL_STORE = path.join(state_basedir, 'emails.sqlite3')
+    SIM_TYPE = getenv('OPWEN_SIM_TYPE')
+    RESTART_PATH = getenv('OPWEN_RESTART_PATH')
 
     EMAIL_ADDRESS_DELIMITER = ','
     EMAILS_PER_PAGE = 30
@@ -94,11 +99,11 @@ class AppConfig(object):
         [DEFAULT_LOCALE] +
         [Locale.parse(code) for code in subdirectories(LOCALES_DIRECTORY)])
 
-    EMAIL_SERVER_READ_API_HOSTNAME = getenv('OPWEN_EMAIL_SERVER_READ_API')
-    EMAIL_SERVER_WRITE_API_HOSTNAME = getenv('OPWEN_EMAIL_SERVER_WRITE_API')
+    COMPRESSION = getenv('OPWEN_COMPRESSION', 'zstd')
+    EMAIL_SERVER_HOSTNAME = getenv('OPWEN_EMAIL_SERVER_HOSTNAME')
     EMAIL_HOST_FORMAT = '{}.' + root_domain
     STORAGE_PROVIDER = getenv('LOKOLE_STORAGE_PROVIDER', 'AZURE_BLOBS')
-    STORAGE_CONTAINER = 'compressedpackages'
+    STORAGE_CONTAINER = getenv('OPWEN_REMOTE_RESOURCE_CONTAINER')
     STORAGE_ACCOUNT_NAME = getenv('OPWEN_REMOTE_ACCOUNT_NAME')
     STORAGE_ACCOUNT_KEY = getenv('OPWEN_REMOTE_ACCOUNT_KEY')
     CLIENT_NAME = getenv('OPWEN_CLIENT_NAME')

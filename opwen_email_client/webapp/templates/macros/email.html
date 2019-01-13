@@ -56,11 +56,11 @@
           </a>
         </h4>
       </div>
-      <div id="collapse{{ loop.index}}" class="panel-collapse collapse">
+      <div id="collapse{{ loop.index }}" class="panel-collapse collapse">
         <div class="panel-body">
           <div class="row">
             <div class="col-sm-12">
-              <span class="email-body">{{ email['body'] | replace('\n', '<br>') | safe }}</span>
+              <span class="email-body">{{ email | render_body | safe }}</span>
             </div>
           </div>
           {% if show_attachments %}

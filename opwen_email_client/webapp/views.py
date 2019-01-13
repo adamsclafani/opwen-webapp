@@ -20,6 +20,7 @@ from opwen_email_client.util.pagination import Pagination
 from opwen_email_client.webapp import app
 from opwen_email_client.webapp.actions import SendWelcomeEmail
 from opwen_email_client.webapp.actions import SyncEmails
+from opwen_email_client.webapp.actions import StartInternetConnection
 from opwen_email_client.webapp.config import AppConfig
 from opwen_email_client.webapp.config import i8n
 from opwen_email_client.webapp.forms.email import NewEmailForm
@@ -57,9 +58,9 @@ def about() -> Response:
 @track_history
 def news(page: int) -> Response:
     email_store = app.ioc.email_store
-    news_inbox = app.config['NEWS_INBOX']
 
-    return _emails_view(email_store.inbox(news_inbox), page, 'news.html')
+    return _emails_view(email_store.inbox(AppConfig.NEWS_INBOX),
+                        page, 'news.html')
 
 
 @app.route('/email')
@@ -136,14 +137,13 @@ def email_delete(email_uid: str) -> Response:
 @track_history
 def email_new() -> Response:
     email_store = app.ioc.email_store
-    attachment_encoder = app.ioc.attachment_encoder
 
     form = NewEmailForm.from_request(email_store)
     if form is None:
         return abort(404)
 
     if form.validate_on_submit():
-        email_store.create([form.as_dict(attachment_encoder)])
+        email_store.create([form.as_dict()])
         flash(i8n.EMAIL_SENT, category='success')
         return redirect(url_for('email_inbox'))
 
@@ -206,7 +206,12 @@ def sync() -> Response:
         email_sync=app.ioc.email_sync,
         email_store=app.ioc.email_store)
 
-    sync_emails()
+    start_internet_connection = StartInternetConnection(
+        sim_type=AppConfig.SIM_TYPE)
+
+    if AppConfig.SIM_TYPE != 'LocalOnly':
+        with start_internet_connection():
+            sync_emails()
 
     flash(i8n.SYNC_COMPLETE, category='success')
     return redirect(url_for('home'))
@@ -235,12 +240,11 @@ def users() -> Response:
 def settings() -> Response:
     form = SettingsForm()
     if form.validate_on_submit():
-        form.update_wvdial(AppConfig.WVDIAL_PATH)
+        form.update()
         flash(i8n.SETTINGS_UPDATED, category='success')
         return redirect(url_for('settings'))
 
-    return _view('settings.html', form=SettingsForm.with_defaults(
-        wvdial_path=AppConfig.WVDIAL_PATH))
+    return _view('settings.html', form=SettingsForm.from_config())
 
 
 @app.route('/admin/suspend/<userid>')
@@ -362,8 +366,8 @@ def _localeselector() -> str:
 def _emails_view(emails: Iterable[dict], page: int,
                  template: str = 'email.html') -> Response:
     attachments_session = app.ioc.attachments_session
-    offset_minutse = getattr(current_user, 'timezone_offset_minutes', 0)
-    timezone_offset = timedelta(minutes=offset_minutse)
+    offset_minutes = getattr(current_user, 'timezone_offset_minutes', 0)
+    timezone_offset = timedelta(minutes=offset_minutes)
 
     if page < 1:
         return abort(404)

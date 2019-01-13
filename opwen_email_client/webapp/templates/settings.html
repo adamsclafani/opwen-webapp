@@ -12,10 +12,15 @@
   {{ form.hidden_tag() }}
 
   <fieldset>
+    <legend>{{ _('Configure SIM type') }}</legend>
+    {{ render_field(form.sim_type) }}
+
     <legend>{{ _('Configure dial-up information') }}</legend>
     {{ render_field(form.wvdial) }}
   </fieldset>
 
   {{ render_button(form.submit, _('Save settings')) }}
 </form>
+
+<a class="btn btn-primary" href="{{ url_for('sync') }}">{{_('Sync Emails')}}</a>
 {% endblock %}

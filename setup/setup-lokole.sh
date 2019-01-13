@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-readonly usage="Usage: $0 <client-name> <sim-type> <storage-account-name> <storage-account-key> <email-key> <server-tables-name> <server-tables-key> <cloudflare-user> <cloudflare-key> <cloudflare-zone> <sync-schedule>
+readonly usage="Usage: $0 <client-name> <sim-type> <sync-schedule> <registration-credentials>
 
 Parameters:
 --------------------------
@@ -16,41 +16,20 @@ sim-type:                 The mobile network to which to connect to upload data
                           to the cloud, e.g. Hologram_World, LocalOnly,
                           Ethernet, or mkwvconf.
 
-storage-account-name:     The name of the account on the external storage
-                          service (e.g. Azure Blob Storage, Amazon S3, etc.)
-                          that the Opwen will use as its target data store.
-
-storage-account-key:      The security key to access the account specified via
-                          the <storage-account-name> parameter above.
-
-email-key:                The security key to access the email sending service
-                          (e.g. Sendgrid, Mailgun, etc.)
-
-server-tables-name:       The name of the account on the external storage
-                          service (e.g. Azure Blob Storage, Amazon S3, etc.)
-                          that the Lokole server uses for tables.
-
-server-tables-key:        The security key to access the account specified via
-                          the <server-tables-name> parameter above.
-
-cloudflare-user:          The user name for the Cloudflare account associated
-                          with the Lokole DNS.
-
-cloudflare-key:           The access key for the Cloudflare account associated
-                          with the Lokole DNS.
-
-cloudflare-zone:          The zone for the Cloudflare account associated with
-                          the Lokole DNS.
-
 sync-schedule:            How often the Lokole should sync with the server. In
                           cron syntax. Example: '34 * * * *' for once per hour.
+
+registration-credentials: Username and password (separated by a colon ':') for
+                          registering with the Lokole server.
 
 Environment variables:
 --------------------------
 
 LOKOLE_ADMIN_NAME:        If set, create an admin user with this account name.
+                          Default: admin
 
 LOKOLE_ADMIN_PASSWORD:    If set, create an admin user with this password.
+                          Default: lokole1Admin
 
 LOKOLE_PASSWORD:          If set to a non-empty string, updates the password of
                           the current user to this value as part of the setup.
@@ -78,18 +57,19 @@ write_file() { mkdir -p "$(dirname "$1")"; sudo tee "$1" > /dev/null; }
 replace_file() { sudo sed -i "$1" "$2"; }
 create_directory() { mkdir -p "$1"; }
 create_temp_directory() { mktemp -d "$1"; }
+create_file() { sudo touch "$1"; }
 create_link() { sudo ln -s "$1" "$2" || true; }
 copy_file() { sudo cp -f "$1" "$2" || echo "$1 does not exist, skipping copy to $2"; }
-delete() { if [ ! -L "$1" ]; then sudo rm -rf "$1"; else sudo unlink "$1"; fi }
+delete() { if [[ ! -L "$1" ]]; then sudo rm -rf "$1"; else sudo unlink "$1"; fi }
 make_executable() { sudo chmod a+x "$1"; }
 make_writable() { sudo chmod a+rw "$1"; }
 create_virtualenv() { python3 -m venv "$1"; }
 change_password() { echo "$1:$2" | sudo chpasswd; }
-required_param() { [ -z "$1" ] && echo "Missing required parameter: $2" && (echo "$3" | head -1) && exit 1; }
+required_param() { [[ -z "$1" ]] && echo "Missing required parameter: $2" && (echo "$3" | head -1) && exit 1; }
 random_string() { head /dev/urandom | tr -dc '_A-Z-a-z-0-9' | head -c"${1:-16}"; echo; }
 disable_system_power_management() { sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target; }
 get_system_ram_kb() { grep 'MemTotal' '/proc/meminfo' | cut -d':' -f2 | sed 's/^ *//g' | cut -d' ' -f1; }
-min() { if [ "$1" -lt "$2" ]; then echo "$1"; else echo "$2"; fi; }
+min() { if [[ "$1" -lt "$2" ]]; then echo "$1"; else echo "$2"; fi; }
 create_root_cron() { (sudo crontab -l || true; echo "$1 $2") 2>&1 | grep -v 'no crontab for' | sort -u | sudo crontab -; }
 http_get() { /usr/bin/curl --request 'GET' --fail "$@"; }
 http_post_json() { /usr/bin/curl --header 'Content-Type: application/json' --request 'POST' --fail "$@"; }
@@ -150,21 +130,12 @@ case $1 in -h|--help) fail "${usage}";; esac
 
 readonly opwen_webapp_config_client_name="$1"
 readonly sim_type="$2"
-readonly opwen_webapp_config_remote_account_name="$3"
-readonly opwen_webapp_config_remote_account_key="$4"
-readonly email_account_key="$5"
-readonly server_tables_account_name="$6"
-readonly server_tables_account_key="$7"
-readonly cloudflare_user="$8"
-readonly cloudflare_key="$9"
-readonly cloudflare_zone="${10}"
-readonly sync_schedule="${11}"
+readonly sync_schedule="$3"
+readonly registration_credentials="$4"
 
 readonly opwen_network_name='Lokole'
 readonly opwen_network_password='Ascoderu'
-readonly opwen_server_read_host='api.mailserver.read.lokole.ca'
-readonly opwen_server_write_host='api.mailserver.write.lokole.ca'
-readonly opwen_server_inbox_host='api.mailserver.inbox.lokole.ca'
+readonly opwen_server_host='mailserver.lokole.ca'
 readonly opwen_server_locale='en_GB.UTF-8'
 readonly opwen_server_timezone='Etc/UTC'
 readonly opwen_user="${USER}"
@@ -179,23 +150,16 @@ info '
 required_param "${opwen_webapp_config_client_name}" 'client-name' "${usage}"
 required_param "${sim_type}" 'sim-type' "${usage}"
 
-if [ "${sim_type}" != "LocalOnly" ]; then
-  required_param "${opwen_webapp_config_remote_account_name}" 'storage-account-name' "${usage}"
-  required_param "${opwen_webapp_config_remote_account_key}" 'storage-account-key' "${usage}"
-  required_param "${email_account_key}" 'email-key' "${usage}"
-  required_param "${server_tables_account_name}" 'server-tables-name' "${usage}"
-  required_param "${server_tables_account_key}" 'server-tables-key' "${usage}"
-  required_param "${cloudflare_user}" 'cloudflare-user' "${usage}"
-  required_param "${cloudflare_key}" 'cloudflare-key' "${usage}"
-  required_param "${cloudflare_zone}" 'cloudflare-zone' "${usage}"
+if [[ "${sim_type}" != "LocalOnly" ]]; then
   required_param "${sync_schedule}" 'sync-schedule' "${usage}"
+  required_param "${registration_credentials}" 'registration-credentials' "${usage}"
 fi
 
 set -o errexit
 set -o pipefail
 
 update_system_packages
-install_system_package 'curl'
+install_system_package 'curl' 'jq'
 
 case "${sim_type}" in
   Hologram_World) ;;
@@ -205,22 +169,12 @@ case "${sim_type}" in
   *) fail "Unsupported sim-type: ${sim_type}" ;;
 esac
 
-if [ "${LOKOLE_WIFI}" != "no" ]; then
+if [[ "${LOKOLE_WIFI}" != "no" ]]; then
 case "${opwen_device}" in
   OrangePI|orangepizero) ht_capab='[HT40][DSS_CCK-40]' ;;
   raspberrypi) ht_capab='[HT40][SHORT-GI-20][DSS_CCK-40]' ;;
   *) fail "Unsupported device: ${opwen_device}" ;;
 esac
-fi
-
-opwen_webapp_config_client_domain="${opwen_webapp_config_client_name}.lokole.ca"
-opwen_webapp_config_client_id="$(random_string 32)"
-
-if [ "${sim_type}" != "LocalOnly" ]; then
-  if http_get --header "Authorization: Bearer ${email_account_key}" \
-    "https://api.sendgrid.com/v3/user/webhooks/parse/settings/${opwen_webapp_config_client_domain}"; then
-    fail "Client ${opwen_webapp_config_client_name} already exists."
-  fi
 fi
 
 
@@ -232,7 +186,7 @@ info '
 set_locale "${opwen_server_locale}"
 set_timezone "${opwen_server_timezone}"
 
-if [ -n "${LOKOLE_PASSWORD}" ]; then
+if [[ -n "${LOKOLE_PASSWORD}" ]]; then
   change_password "${opwen_user}" "${LOKOLE_PASSWORD}"
 fi
 
@@ -241,7 +195,7 @@ info '
 ################################################################################
 #                                                                installing wifi
 ################################################################################'
-if [ "${LOKOLE_WIFI}" != "no" ]; then
+if [[ "${LOKOLE_WIFI}" != "no" ]]; then
 
 install_system_package 'hostapd' 'dnsmasq'
 
@@ -344,16 +298,32 @@ info '
 
 install_system_package 'python3' 'python3-pip' 'python3-venv' 'python3-dev' 'libffi-dev' 'libssl-dev' 'bcrypt'
 
-opwen_webapp_virtualenv="/home/${opwen_user}/python"
+opwen_base_directory="/home/${opwen_user}/lokole"
+create_directory "${opwen_base_directory}"
+
+opwen_webapp_virtualenv="${opwen_base_directory}/python"
 create_directory "${opwen_webapp_virtualenv}"
 
 opwen_webapp_service='opwen_email_client'
 opwen_webapp_directory="${opwen_webapp_virtualenv}/lib/python$(python_version)/site-packages/${opwen_webapp_service}/webapp"
 
 create_virtualenv "${opwen_webapp_virtualenv}"
-while ! "${opwen_webapp_virtualenv}/bin/pip" install --upgrade pip setuptools wheel; do sleep_a_bit; done
-while ! "${opwen_webapp_virtualenv}/bin/pip" install "${opwen_webapp_service}"; do sleep_a_bit; done
+while ! "${opwen_webapp_virtualenv}/bin/pip" install --no-cache-dir --upgrade pip setuptools wheel; do sleep_a_bit; done
+while ! "${opwen_webapp_virtualenv}/bin/pip" install --no-cache-dir "${opwen_webapp_service}"; do sleep_a_bit; done
 "${opwen_webapp_virtualenv}/bin/pybabel" compile -d "${opwen_webapp_directory}/translations"
+
+
+info '
+################################################################################
+#                                                       registering email webapp
+################################################################################'
+
+opwen_webapp_config_client_domain="${opwen_webapp_config_client_name}.lokole.ca"
+opwen_webapp_registration_response="$(http_post_json "https://${opwen_server_host}/api/email/register/" -u "${registration_credentials}" -d "{\"domain\":\"${opwen_webapp_config_client_domain}\"}")"
+opwen_webapp_config_client_id="$(jq -r '.client_id' <<< "${opwen_webapp_registration_response}")"
+opwen_webapp_config_remote_account_name="$(jq -r '.storage_account' <<< "${opwen_webapp_registration_response}")"
+opwen_webapp_config_remote_account_key="$(jq -r '.storage_key' <<< "${opwen_webapp_registration_response}")"
+opwen_webapp_config_remote_resource_container="$(jq -r '.resource_container' <<< "${opwen_webapp_registration_response}")"
 
 
 info '
@@ -361,33 +331,37 @@ info '
 #                                                  setting up webapp environment
 ################################################################################'
 
-opwen_webapp_run_directory="/home/${opwen_user}/state"
+opwen_webapp_run_directory="${opwen_base_directory}/state"
 create_directory "${opwen_webapp_run_directory}"
 
 opwen_webapp_config_session_key="$(random_string 32)"
 opwen_webapp_config_password_salt="$(random_string 16)"
 opwen_webapp_admin_secret="$(random_string 32)"
-opwen_webapp_envs="${opwen_webapp_run_directory}/webapp_secrets.sh"
+opwen_webapp_envs="${opwen_webapp_run_directory}/webapp_settings.env"
+restart_path="${opwen_webapp_run_directory}/webapp_restart"
 
 write_file "${opwen_webapp_envs}" << EOF
-export OPWEN_STATE_DIRECTORY='${opwen_webapp_run_directory}'
-export OPWEN_SESSION_KEY='${opwen_webapp_config_session_key}'
-export OPWEN_PASSWORD_SALT='${opwen_webapp_config_password_salt}'
-export OPWEN_ADMIN_SECRET='${opwen_webapp_admin_secret}'
-export OPWEN_REMOTE_ACCOUNT_NAME='${opwen_webapp_config_remote_account_name}'
-export OPWEN_REMOTE_ACCOUNT_KEY='${opwen_webapp_config_remote_account_key}'
-export OPWEN_CLIENT_ID='${opwen_webapp_config_client_id}'
-export OPWEN_CLIENT_NAME='${opwen_webapp_config_client_name}'
-export OPWEN_EMAIL_SERVER_READ_API='${opwen_server_read_host}'
-export OPWEN_EMAIL_SERVER_WRITE_API='${opwen_server_write_host}'
+OPWEN_STATE_DIRECTORY=${opwen_webapp_run_directory}
+OPWEN_SESSION_KEY=${opwen_webapp_config_session_key}
+OPWEN_PASSWORD_SALT=${opwen_webapp_config_password_salt}
+OPWEN_ADMIN_SECRET=${opwen_webapp_admin_secret}
+OPWEN_REMOTE_ACCOUNT_NAME=${opwen_webapp_config_remote_account_name}
+OPWEN_REMOTE_ACCOUNT_KEY=${opwen_webapp_config_remote_account_key}
+OPWEN_REMOTE_RESOURCE_CONTAINER=${opwen_webapp_config_remote_resource_container}
+OPWEN_CLIENT_ID=${opwen_webapp_config_client_id}
+OPWEN_CLIENT_NAME=${opwen_webapp_config_client_name}
+OPWEN_EMAIL_SERVER_HOSTNAME=${opwen_server_host}
+OPWEN_SIM_TYPE=${sim_type}
+OPWEN_RESTART_PATH=${restart_path}
 EOF
 
-if [ -n "${LOKOLE_ADMIN_NAME}" ] && [ -n "${LOKOLE_ADMIN_PASSWORD}" ]; then
-  . "${opwen_webapp_envs}"
-  "${opwen_webapp_virtualenv}/bin/manage.py" createadmin \
-    --name="${LOKOLE_ADMIN_NAME}" \
-    --password="${LOKOLE_ADMIN_PASSWORD}"
-fi
+lokole_admin_name="${LOKOLE_ADMIN_NAME:-admin}"
+lokole_admin_password="${LOKOLE_ADMIN_PASSWORD:-lokole1admin}"
+
+OPWEN_SETTINGS="${opwen_webapp_envs}" \
+"${opwen_webapp_virtualenv}/bin/manage.py" createadmin \
+  --name="${lokole_admin_name}" \
+  --password="${lokole_admin_password}"
 
 
 info '
@@ -406,19 +380,31 @@ opwen_webapp_log_level="error"
 nginx_access_log="${opwen_webapp_run_directory}/nginx_access.log"
 nginx_error_log="${opwen_webapp_run_directory}/nginx_error.log"
 
-opwen_webapp_script="${opwen_webapp_run_directory}/webapp.sh"
+opwen_webapp_script="${opwen_webapp_run_directory}/webapp_run.sh"
 write_file "${opwen_webapp_script}" << EOF
 #!/usr/bin/env sh
-. '${opwen_webapp_envs}'
-
 '${opwen_webapp_virtualenv}/bin/gunicorn' \\
   --timeout='${opwen_webapp_timeout_seconds}' \\
   --workers='${opwen_webapp_workers}' \\
   --bind='unix:${opwen_webapp_socket}' \\
   --log-level='${opwen_webapp_log_level}' \\
+  --env 'OPWEN_SETTINGS=${opwen_webapp_envs}' \\
   '${opwen_webapp_service}.webapp:app'
 EOF
 make_executable "${opwen_webapp_script}"
+
+opwen_restart_script="${opwen_webapp_run_directory}/webapp_restart.sh"
+write_file "${opwen_restart_script}" << EOF
+#!/usr/bin/env sh
+if [ -f "${restart_path}" ]; then
+  supervisorctl restart ${opwen_webapp_service} >/dev/null
+  rm -f "${restart_path}"
+fi
+EOF
+make_executable "${opwen_restart_script}"
+
+restart_schedule='*/5 * * * *'
+create_root_cron "${restart_schedule}" "${opwen_restart_script}"
 
 create_daemon \
   "${opwen_webapp_service}" \
@@ -481,44 +467,15 @@ http {
 }
 EOF
 
-if [ "${sim_type}" == "LocalOnly" ]; then
-  finished
-fi
-
-
-info '
-################################################################################
-#                                                       registering email webapp
-################################################################################'
-
-registration_virtualenv="$(create_temp_directory /tmp/opwen_email_server.XXXXXX)"
-
-create_virtualenv "${registration_virtualenv}"
-while ! "${registration_virtualenv}/bin/pip" install --upgrade pip setuptools wheel; do sleep_a_bit; done
-while ! "${registration_virtualenv}/bin/pip" install opwen_email_server; do sleep_a_bit; done
-
-"${registration_virtualenv}/bin/registerclient.py" \
-    --tables_account="${server_tables_account_name}" \
-    --tables_key="${server_tables_account_key}" \
-    --client_account="${opwen_webapp_config_remote_account_name}" \
-    --client_key="${opwen_webapp_config_remote_account_key}" \
-    --client="${opwen_webapp_config_client_id}" \
-    --domain="${opwen_webapp_config_client_domain}"
-
-delete "${registration_virtualenv}"
-
 
 info '
 ################################################################################
 #                                                       installing network stick
 ################################################################################'
 
-install_system_package 'cron'
+install_system_package 'cron' 'usb-modeswitch' 'usb-modeswitch-data' 'ppp' 'wvdial'
 
-opwen_webapp_email_sync_script="${opwen_webapp_run_directory}/sync.sh"
-
-if [ "${sim_type}" != "Ethernet" ]; then
-install_system_package 'usb-modeswitch' 'usb-modeswitch-data' 'ppp' 'wvdial'
+opwen_webapp_email_sync_script="${opwen_webapp_run_directory}/webapp_sync.sh"
 
 opwen_dialer_config_directory="/home/${opwen_user}/wvdial"
 create_directory "${opwen_dialer_config_directory}"
@@ -542,13 +499,17 @@ Modem = /dev/ttyUSB0
 IDSN = 0
 EOF
 
-if [ "${sim_type}" = "mkwvconf" ]; then
+if [[ "${sim_type}" = "mkwvconf" ]]; then
   install_system_package 'mobile-broadband-provider-info'
-  "${opwen_webapp_virtualenv}/bin/pip" install mkwvconf
+  "${opwen_webapp_virtualenv}/bin/pip" install --no-cache-dir mkwvconf
   "${opwen_webapp_virtualenv}/bin/mkwvconf.py" --configPath="${opwen_dialer_config_directory}/${sim_type}"
 fi
 
-copy_file "${opwen_dialer_config_directory}/${sim_type}" "${internet_dialer_config}"
+if [[ "${sim_type}" != "Ethernet" ]]; then
+  copy_file "${opwen_dialer_config_directory}/${sim_type}" "${internet_dialer_config}"
+else
+  create_file "${internet_dialer_config}"
+fi
 make_writable "${internet_dialer_config}"
 
 write_file "${internet_modem_config_e303}" << EOF
@@ -582,125 +543,14 @@ usepeerdns
 defaultroute
 replacedefaultroute
 EOF
-fi
 
 write_file "${opwen_webapp_email_sync_script}" << EOF
 #!/usr/bin/env sh
-
-sync_secret='${opwen_webapp_admin_secret}'
-dialer_config='${internet_dialer_config}'
-sync_logfile='${opwen_webapp_run_directory}/sync_stdout.log'
-
-dialer_logfile="\$(mktemp /tmp/dialer.log.XXXXXX)"
-dialer_pidfile="\$(mktemp /tmp/dialer.pid.XXXXXX)"
-
-modem_target_mode='1506'
-
-modem_is_e303() { /usr/bin/lsusb | grep 'Huawei' | grep -q '12d1:14fe'; }
-modem_is_e353() { /usr/bin/lsusb | grep 'Huawei' | grep -q '12d1:1f01'; }
-modem_is_e3131() { /usr/bin/lsusb | grep 'Huawei' | grep -q '12d1:155b'; }
-modem_is_plugged() { /usr/bin/lsusb | grep 'Huawei' | grep -q '12d1:'; }
-modem_is_setup() { /usr/bin/lsusb | grep 'Huawei' | grep -q "12d1:\${modem_target_mode}"; }
-dialer_is_running() { test -f "\${dialer_pidfile}" && read pid < "\${dialer_pidfile}" && ps -p "\${pid}" > /dev/null; }
-connect_to_internet() { /usr/bin/wvdial --config="\${dialer_config}" 2> "\${dialer_logfile}" & echo \$! > "\${dialer_pidfile}"; }
-dialer_is_connected() { test -f "\${dialer_logfile}" && grep -q 'secondary DNS address' "\${dialer_logfile}"; }
-kill_dialer() { test -f "\${dialer_pidfile}" && read pid < "\${dialer_pidfile}" && kill "\${pid}" && rm "\${dialer_pidfile}" && rm "\${dialer_logfile}"; }
-sync_emails() { /usr/bin/curl "http://localhost:${opwen_port}/admin/sync?secret=\${sync_secret}"; }
-
-setup_modem() {
-  if   modem_is_e353;  then modem_target_mode='1001'; /usr/sbin/usb_modeswitch --config-file '${internet_modem_config_e353}'
-  elif modem_is_e303;  then modem_target_mode='1506'; /usr/sbin/usb_modeswitch --config-file '${internet_modem_config_e303}'
-  elif modem_is_e3131; then modem_target_mode='1506'; /usr/sbin/usb_modeswitch --config-file '${internet_modem_config_e3131}'
-  else exit 1;         fi
-}
-
-main_modem() {
-  if ! modem_is_plugged; then
-    echo 'Modem not plugged in, exitting' >&2
-    exit 1
-  fi
-
-  if ! modem_is_setup; then
-    echo 'Setting up modem...'
-    setup_modem
-    while ! modem_is_setup; do sleep 1s; done
-    echo '...done, modem is now set up'
-  fi
-
-  if ! dialer_is_running; then
-    echo 'Dialing up...'
-    connect_to_internet
-    while ! dialer_is_connected; do sleep 1s; done
-    echo '...done, connection to internet is established'
-  fi
-
-  echo 'Syncing emails...'
-  sync_emails
-  echo '...done, emails are synced'
-
-  echo 'Killing dialer...'
-  kill_dialer
-  echo '...done, connection to internet is terminated'
-}
-
-main_ethernet() {
-  echo 'Syncing emails...'
-  sync_emails
-  echo '...done, emails are synced'
-}
-
-main() {
-  if [ "${sim_type}" = "Ethernet" ]; then
-    main_ethernet
-  else
-    main_modem
-  fi
-}
-
-main_with_retry() {
-  local attempts=0
-  local timeout=5
-
-  until [ "\${attempts}" -ge 5 ]; do
-    set -o pipefail
-    main 2>&1 | tee --append "\${sync_logfile}"
-    local exitcode="\$?"
-    set +o pipefail
-
-    if [ "\${exitcode}" -eq 0 ]; then
-      break
-    fi
-
-    attempts="\$((attempts+1))"
-    timeout="\$((timeout*2))"
-    sleep "\${timeout}"
-  done
-}
-
-main_with_retry
+/usr/bin/curl "http://localhost:${opwen_port}/admin/sync?secret=${opwen_webapp_admin_secret}"
 EOF
 make_executable "${opwen_webapp_email_sync_script}"
 
 create_root_cron "${sync_schedule}" "${opwen_webapp_email_sync_script}"
-
-
-info '
-################################################################################
-#                                            setting up email dns and forwarding
-################################################################################'
-
-opwen_cloudserver_endpoint="http://${opwen_server_inbox_host}/api/email/sendgrid/${opwen_webapp_config_client_id}"
-
-http_post_json \
-    --header "Authorization: Bearer ${email_account_key}" \
-    --data "{\"hostname\":\"${opwen_webapp_config_client_domain}\",\"url\":\"${opwen_cloudserver_endpoint}\",\"spam_check\":true,\"send_raw\":true}" \
-    'https://api.sendgrid.com/v3/user/webhooks/parse/settings'
-
-http_post_json \
-  --header "X-Auth-Key: ${cloudflare_key}" \
-  --header "X-Auth-Email: ${cloudflare_user}" \
-  --data "{\"type\":\"MX\",\"name\":\"${opwen_webapp_config_client_name}\",\"content\":\"mx.sendgrid.net\",\"proxied\":false,\"priority\":1}" \
-  "https://api.cloudflare.com/client/v4/zones/${cloudflare_zone}/dns_records"
 
 
 finished

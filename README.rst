@@ -95,18 +95,22 @@ e.g. on Ubuntu:
   curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
   echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
   sudo apt-get update
-  sudo apt-get install -y yarn make python3 python3-venv shellcheck
+  sudo apt-get install -y yarn make python3 python3-venv
 
 Third, use the makefile to verify your installation by running the tests and
 starting up the server. The makefile will automatically install all required
 dependencies into a virtual environment and set up some dummy environment
 variables for local development. The server will automatically reload whenever
-any of the Flask code or Jinja templates are changed.
+any of the Flask code or Jinja templates are changed. To play with the Lokole
+functionality, you can either register new user accounts from within the app,
+or log in as an admin with the username ``admin`` and the password ``123456``.
 
 .. sourcecode :: sh
 
   make tests
-  make server
+  make admin-user server
+  make worker
+  make cron
 
 The routes of the app are defined in `views.py <https://github.com/ascoderu/opwen-webapp/blob/master/opwen_email_client/webapp/views.py>`_
 so take a look there for an overview of the entrypoints into the code.
@@ -122,7 +126,7 @@ is called.
 Production setup
 ----------------
 
-There is a `script <https://github.com/ascoderu/opwen-webapp/blob/master/setup/setup-lokole.sh>`_
+There is a `script <https://github.com/ascoderu/opwen-webapp/blob/master/install.py>`_
 to set up a new Lokole device. The script will install the email app in this
 repository as well as standard infrastructure like nginx and gunicorn.
 The script will also make ready peripherals like the USB modem used for data
@@ -166,9 +170,8 @@ You can run the script on your client device like so:
 
 .. sourcecode :: sh
 
-  curl -O https://raw.githubusercontent.com/ascoderu/opwen-webapp/master/setup/setup-lokole.sh && \
-  chmod +x setup-lokole.sh && \
-  ./setup-lokole.sh <client-name> <sim-type> <sync-schedule> <registration-credentials>
+  curl -fsO https://raw.githubusercontent.com/ascoderu/opwen-webapp/master/install.py && \
+  sudo python3 install.py <client-name> <sim-type> <sync-schedule> <registration-credentials>
 
 
 Adding a new language

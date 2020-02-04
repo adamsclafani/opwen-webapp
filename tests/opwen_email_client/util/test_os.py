@@ -1,24 +1,22 @@
-from os import environ, remove
+from gzip import GzipFile
+from os import remove
+from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Iterable
 from unittest import TestCase
 
-from opwen_email_client.util.os import getenv
-from opwen_email_client.util.os import subdirectories
+from opwen_email_client.util.os import backup
 from opwen_email_client.util.os import replace_line
+from opwen_email_client.util.os import subdirectories
 
 
-class ReplaceLinetests(TestCase):
+class ReplaceLineTests(TestCase):
     def test_replaces_line(self):
         fobj = NamedTemporaryFile('w+', delete=False)
         try:
             fobj.write('foo\nbar\nbaz')
             fobj.close()
 
-            replace_line(
-                fobj.name,
-                lambda line: line.startswith('ba'),
-                'changed')
+            replace_line(fobj.name, lambda line: line.startswith('ba'), 'changed')
 
             with open(fobj.name) as changed:
                 content = changed.read()
@@ -32,52 +30,31 @@ class SubdirectoriesTests(TestCase):
         self.assertEqual(len(list(subdirectories('/does-not-exist'))), 0)
 
 
-class GetenvTests(TestCase):
-    def setUp(self):
-        self.envs = set()
+class BackupTests(TestCase):
+    def test_backup_without_file(self):
+        path = '/does/not/exist.txt'
+        backup_path = backup(path, suffix='.old')
+        self.assertIsNone(backup_path)
+        self.assertFalse(Path('{}.old'.format(path)).is_file())
 
-    def tearDown(self):
-        for env in self.envs:
-            del environ[env]
+    def test_backup(self):
+        fobj = NamedTemporaryFile(delete=False)
+        fobj.close()
+        path = Path(fobj.name)
+        try:
+            path.write_bytes(b'foo\n')
+            backup(path)
 
-    @classmethod
-    def unknown_types(cls) -> Iterable[object]:
-        yield "foo"
-        yield "[1,"
+            path.write_bytes(b'bar')
+            backup(fobj.name)
 
-    @classmethod
-    def known_types(cls) -> Iterable[object]:
-        yield True
-        yield [1, 2]
-        yield {'a': 'b'}
+            path.write_bytes(b'\nbaz')
+            backup_path = backup(fobj.name)
 
-    def given_env(self, key: str, value: object):
-        environ[key] = str(value)
-        self.envs.add(key)
+            self.assertIsNotNone(backup_path)
+            self.assertTrue(backup_path.is_file())
 
-    def test_parses_known_types(self):
-        for i, expected in enumerate(self.known_types()):
-            env_key = 'known_type_{}'.format(i)
-
-            self.given_env(env_key, expected)
-
-            actual = getenv(env_key)
-
-            self.assertEqual(actual, expected)
-
-    def test_passes_through_unknown_types(self):
-        for i, expected in enumerate(self.unknown_types()):
-            env_key = 'unknown_type_{}'.format(i)
-
-            self.given_env(env_key, expected)
-
-            actual = getenv(env_key)
-
-            self.assertEqual(actual, expected)
-
-    def test_returns_default_when_key_is_missing(self):
-        default = 123
-
-        actual = getenv('missing_key', default)
-
-        self.assertEqual(actual, default)
+            with GzipFile(str(backup_path), 'rb') as fobj:
+                self.assertEqual(fobj.read(), b'foo\nbar\nbaz')
+        finally:
+            remove(fobj.name)

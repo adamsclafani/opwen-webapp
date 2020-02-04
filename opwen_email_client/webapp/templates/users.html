@@ -1,6 +1,9 @@
 {% extends "_base.html" %}
 
+{% block title %}{{ _('Users | Lokole') }}{% endblock %}
+
 {% block content %}{{ super() }}
+<main>
 <table class="table table-hover">
   <thead>
     <tr>
@@ -51,7 +54,7 @@
     </td>
     {% if current_user.is_admin %}
     <td>
-      {{ user.format_last_login(current_user.timezone_offset_minutes) }}
+      {{ format_last_login(user, current_user) }}
     </td>
     {% endif %}
   </tr>
@@ -59,4 +62,5 @@
   {% endfor %}
   </tbody>
 </table>
+</main>
 {% endblock %}

@@ -22,7 +22,7 @@
 <li class="dropdown">
   <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button">
     {{ render_flag(current_locale) }}
-    <span class="fa fa-caret-down"></span>
+    <span class="fa fa-caret-down" aria-hidden="true"></span>
   </a>
   <ul class="dropdown-menu">
     {% for locale in locales %}
@@ -42,7 +42,7 @@
     <div class="navbar-header">
       <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
         <span class="sr-only">{{ _('Toggle navigation') }}</span>
-        <span class="fa fa-bars"></span>
+        <span class="fa fa-bars" aria-hidden="true"></span>
       </button>
       <a class="navbar-brand" href="{{ url_for('home') }}">{{ _('Ascoderu') }}</a>
     </div>
@@ -53,7 +53,7 @@
         {{ nav_link('email_inbox', _('Email'), level=0, icon='envelope') }}
         {{ nav_link('users', _('Users'), level=0, icon='users') }}
         {{ nav_link('news', _('News'), level=0, icon='comments') }}
-        {% if current_user.is_admin %}
+        {% if current_user.is_admin and not local_only %}
         {{ nav_link('settings', _('Settings'), level=0, icon='cog') }}
         {% endif %}
       </ul>
@@ -65,13 +65,17 @@
             {{ current_user.email }} <span class="caret"></span>
           </a>
           <ul class="dropdown-menu">
+            {% if can_change_password %}
             <li>{{ nav_link_security('change_password', _('Change password'), icon='key') }}</li>
+            {% endif %}
             <li>{{ nav_link_security('logout', _('Logout'), icon='sign-out') }}</li>
           </ul>
         </li>
         {% else %}
         {{ nav_link_security('login', _('Login')) }}
+        {% if can_register_user %}
         {{ nav_link_security('register', _('Register')) }}
+        {% endif %}
         {% endif %}
       </ul>
     </div>
@@ -85,6 +89,8 @@
   {{ nav_link('email_sent', _('Sent'), level=1) }}
   {{ nav_link('email_outbox', _('Outbox'), level=1) }}
   {{ nav_link('email_new', _('Write email'), level=1) }}
+  {% if can_search_email %}
   {{ nav_link('email_search', _('Search'), level=1) }}
+  {% endif %}
 </ul>
 {% endmacro %}

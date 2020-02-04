@@ -12,12 +12,12 @@ class EmailStore(metaclass=ABCMeta):
     def __init__(self, restricted: Optional[Dict[str, Set[str]]] = None):
         self._restricted = restricted or {}
 
-    def create(self, emails: Iterable[dict]):
-        self._create((_add_uid(email) for email in emails
-                      if not _is_restricted(email, self._restricted)))
+    def create(self, emails_or_attachments: Iterable[dict]):
+        self._create((_add_uid(email_or_attachment) for email_or_attachment in emails_or_attachments
+                      if not _is_restricted(email_or_attachment, self._restricted)))
 
     @abstractmethod
-    def _create(self, emails: Iterable[dict]):
+    def _create(self, emails_or_attachments: Iterable[dict]):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
@@ -25,37 +25,46 @@ class EmailStore(metaclass=ABCMeta):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def inbox(self, email_address: str) -> Iterable[dict]:
+    def get_attachment(self, email_id: str, attachment_id: str) -> Optional[dict]:
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def outbox(self, email_address: str) -> Iterable[dict]:
+    def inbox(self, email_address: str, page: int) -> Iterable[dict]:
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def sent(self, email_address: str) -> Iterable[dict]:
+    def outbox(self, email_address: str, page: int) -> Iterable[dict]:
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def search(self, email_address: str,
-               query: Optional[str]) -> Iterable[dict]:
+    def sent(self, email_address: str, page: int) -> Iterable[dict]:
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def pending(self) -> Iterable[dict]:
+    def search(self, email_address: str, page: int, query: Optional[str]) -> Iterable[dict]:
+        raise NotImplementedError  # pragma: no cover
+
+    @abstractmethod
+    def pending(self, page: Optional[int]) -> Iterable[dict]:
+        raise NotImplementedError  # pragma: no cover
+
+    @abstractmethod
+    def has_unread(self, email_address: str) -> bool:
+        raise NotImplementedError  # pragma: no cover
+
+    @abstractmethod
+    def num_pending(self) -> int:
         raise NotImplementedError  # pragma: no cover
 
     def mark_sent(self, emails_or_uids: Iterable[Union[dict, str]]):
         uids = map(_get_uid, emails_or_uids)
         return self._mark_sent(uids)
 
-    def mark_read(self, email_address: str,
-                  emails_or_uids: Iterable[Union[dict, str]]):
+    def mark_read(self, email_address: str, emails_or_uids: Iterable[Union[dict, str]]):
         uids = map(_get_uid, emails_or_uids)
         return self._mark_read(email_address, uids)
 
-    def delete(self, email_address: str,
-               emails_or_uids: Iterable[Union[dict, str]]):
+    def delete(self, email_address: str, emails_or_uids: Iterable[Union[dict, str]]):
         uids = map(_get_uid, emails_or_uids)
         return self._delete(email_address, uids)
 
@@ -73,6 +82,10 @@ class EmailStore(metaclass=ABCMeta):
 
 
 def _is_restricted(email: dict, restricted: Dict[str, Set[str]]) -> bool:
+    type_ = email.get('_type')
+    if type_ and type_ != 'email':
+        return False
+
     sender = email.get('from', '')
     recipients = _get_recipients(email)
 
@@ -97,4 +110,6 @@ def _get_recipients(email: dict) -> Set[str]:
 
 def _add_uid(email: dict) -> dict:
     email.setdefault('_uid', str(uuid4()))
+    for attachment in email.get('attachments', []):
+        attachment.setdefault('_uid', str(uuid4()))
     return email

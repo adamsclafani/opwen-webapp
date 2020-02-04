@@ -9,7 +9,8 @@
     "grunt": "^1.0.1",
     "grunt-contrib-copy": "^1.0.0",
     "grunt-contrib-cssmin": "^2.2.0",
-    "grunt-contrib-uglify": "^3.0.1"
+    "grunt-contrib-uglify": "^3.0.1",
+    "standard": "^14.0.2"
   },
   "dependencies": {
     "@bower_components/bootstrap": "twbs/bootstrap#^3.3.7",
@@ -27,6 +28,7 @@
     "jquery-lazyload": "^1.9.7"
   },
   "engines": {
+    "node": ">= 8.10.0",
     "yarn": ">= 1.0.0"
   }
 }

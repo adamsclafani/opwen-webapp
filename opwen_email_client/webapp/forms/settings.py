@@ -7,25 +7,37 @@ from wtforms import StringField
 from wtforms import SubmitField
 from wtforms import TextAreaField
 
+from opwen_email_client import __version__
 from opwen_email_client.util.os import replace_line
+from opwen_email_client.util.wtforms import CronSchedule
+from opwen_email_client.webapp.actions import RestartApp
 from opwen_email_client.webapp.config import AppConfig
+from opwen_email_client.webapp.config import i8n
 from opwen_email_client.webapp.config import settings_path
+from opwen_email_client.webapp.tasks import update
 
 
 class SettingsForm(FlaskForm):
     wvdial = TextAreaField()
 
+    code_version = StringField()
+
     sim_type = StringField()
+
+    sync_schedule = StringField(validators=[CronSchedule()], description=i8n.SYNC_SCHEDULE_SYNTAX_DESCRIPTION)
 
     submit = SubmitField()
 
     def update(self):
         restart_required = False
         restart_required |= self._update_sim_type()
+        restart_required |= self._update_sync_schedule()
         restart_required |= self._update_wvdial()
+        restart_required |= self._update_code_version()
 
         if restart_required:
-            self._restart_app()
+            restart_app = RestartApp(restart_paths=AppConfig.RESTART_PATHS)
+            restart_app()
 
     def _update_wvdial(self) -> bool:
         wvdial = self.wvdial.data.strip()
@@ -36,8 +48,15 @@ class SettingsForm(FlaskForm):
         path.parent.mkdir(parents=True, exist_ok=True)
 
         with path.open('w', encoding='utf-8') as fobj:
-            fobj.write('\n'.join(line.strip()
-                                 for line in wvdial.splitlines()))
+            fobj.write('\n'.join(line.strip() for line in wvdial.splitlines()))
+        return False
+
+    def _update_code_version(self) -> bool:
+        code_version = self.code_version.data.strip()
+        if not code_version or code_version == __version__:
+            return False
+
+        update.delay(version=code_version)
         return False
 
     def _update_sim_type(self) -> bool:
@@ -48,12 +67,20 @@ class SettingsForm(FlaskForm):
         self._update_config('OPWEN_SIM_TYPE', sim_type)
         return True
 
+    def _update_sync_schedule(self) -> bool:
+        sync_schedule = self.sync_schedule.data.strip()
+        if sync_schedule == AppConfig.SYNC_SCHEDULE:
+            return False
+
+        self._update_config('OPWEN_SYNC_SCHEDULE', sync_schedule)
+        return True
+
     @classmethod
     def _update_config(cls, env_key: str, value: str):
-        replace_line(
-            settings_path,
-            lambda line: line.startswith('{}='.format(env_key)),
-            '{}={}'.format(env_key, value))
+        def is_env(line):
+            return line.startswith('{}='.format(env_key))
+
+        replace_line(settings_path, is_env, '{}={}'.format(env_key, value))
 
         config_key = env_key.replace('OPWEN_', '')
         setattr(AppConfig, config_key, value)
@@ -62,15 +89,12 @@ class SettingsForm(FlaskForm):
         return True
 
     @classmethod
-    def _restart_app(cls):
-        if AppConfig.RESTART_PATH:
-            Path(AppConfig.RESTART_PATH).touch()
-
-    @classmethod
     def from_config(cls):
         return cls(
+            code_version=__version__,
             wvdial=_read_wvdial(_get_wvdial_path()),
-            sim_type=AppConfig.SIM_TYPE
+            sync_schedule=AppConfig.SYNC_SCHEDULE,
+            sim_type=AppConfig.SIM_TYPE,
         )
 
 

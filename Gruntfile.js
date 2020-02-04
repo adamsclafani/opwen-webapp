@@ -103,6 +103,9 @@ module.exports = function(grunt) {
           compress: true,
         },
         files: {
+          'opwen_email_client/webapp/static/js/_base.min.js': [
+            'opwen_email_client/webapp/static/js/_base.js',
+          ],
           'opwen_email_client/webapp/static/js/_base_email.min.js': [
             'opwen_email_client/webapp/static/js/_base_email.js',
           ],
@@ -111,6 +114,9 @@ module.exports = function(grunt) {
           ],
           'opwen_email_client/webapp/static/js/register.min.js': [
             'opwen_email_client/webapp/static/js/register.js',
+          ],
+          'opwen_email_client/webapp/static/js/settings.min.js': [
+            'opwen_email_client/webapp/static/js/settings.js',
           ]
         }
       }

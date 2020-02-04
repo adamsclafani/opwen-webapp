@@ -1,22 +1,13 @@
-from ast import literal_eval
 from fileinput import input as fileinput
-from os import getenv as _getenv
+from gzip import GzipFile
 from os import listdir
 from os.path import isdir
 from os.path import join
+from pathlib import Path
 from typing import Callable
 from typing import Iterable
-from typing import TypeVar
-
-T = TypeVar('T')
-
-
-def getenv(key: str, default: T = None) -> T:
-    value = _getenv(key, default)
-    try:
-        return literal_eval(value)
-    except (ValueError, SyntaxError):
-        return value
+from typing import Optional
+from typing import Union
 
 
 def subdirectories(root: str) -> Iterable[str]:
@@ -39,3 +30,18 @@ def replace_line(path: str, match: Callable[[str], bool], replacement: str):
             print(replacement, end=end)
         else:
             print(line, end='')
+
+
+def backup(path: Union[str, Path], suffix: str = '.bak.gz') -> Optional[Path]:
+    path = Path(path)
+
+    if not path.is_file():
+        return None
+
+    backup_path = '{}{}'.format(path, suffix)
+    with GzipFile(backup_path, mode='ab') as fout:
+        with path.open('rb') as fin:
+            for line in fin:
+                fout.write(line)
+
+    return Path(backup_path)
